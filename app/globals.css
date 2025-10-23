@@ -1,0 +1,18 @@
+/* Global resets for the app */
+html, body, #__next {
+  height: 100%;
+}
+
+/* Remove browser default body margin (usually 8px) */
+body {
+  margin: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #f3f4f6; /* keep the light gray background you asked for */
+}
+
+/* Make sure images and media don't overflow their containers */
+img, canvas {
+  max-width: 100%;
+  height: auto;
+}
