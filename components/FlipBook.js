@@ -34,6 +34,62 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
   const [flipSize, setFlipSize] = useState({ width: 1000, height: 600 });
   // show/hide the thumbnail column when hovering the button section
   const [controlsVisible, setControlsVisible] = useState(false);
+  // Consider mobile layout when container is narrow
+  // Allow forcing mobile via query param for testing: ?mobile=1 or ?mobile=true
+  let forceMobile = false;
+  let debugMode = false;
+  if (typeof window !== "undefined") {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const mv = p.get("mobile");
+      const dv = p.get("debug");
+      if (dv === "1" || dv === "true") debugMode = true;
+      if (mv === "1" || mv === "true") forceMobile = true;
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  // Use a stateful, robust mobile detector (matchMedia + innerWidth + UA) so
+  // real mobile devices and browser-resize events reliably toggle mobile mode.
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const detect = () => {
+      const byMedia = window.matchMedia && window.matchMedia("(max-width: 768px)").matches;
+      const byInner = window.innerWidth <= 768;
+      const ua = typeof navigator !== "undefined" ? navigator.userAgent || "" : "";
+      const byUa = /Mobi|Android|iPhone|iPad|iPod|Opera Mini|IEMobile/i.test(ua);
+      setIsMobile(Boolean(forceMobile || byMedia || byInner || byUa));
+    };
+
+    detect();
+    const mq = window.matchMedia("(max-width: 768px)");
+    const onChange = () => detect();
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+    window.addEventListener("resize", onChange);
+    window.addEventListener("orientationchange", onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+      window.removeEventListener("resize", onChange);
+      window.removeEventListener("orientationchange", onChange);
+    };
+  }, [forceMobile]);
+
+  // When on a narrow/mobile viewport, automatically switch to the native PDF view
+  // so mobile devices show the normal PDF instead of the flip UI.
+  useEffect(() => {
+    if (isMobile) {
+      if (viewMode !== "pdf") setViewMode("pdf");
+    } else {
+      // when returning to a wider viewport, automatically switch back to flip mode
+      if (viewMode !== "flip") setViewMode("flip");
+    }
+  }, [isMobile]);
 
   // Recalculate flipSize when pages load or container dimensions change
   useEffect(() => {
@@ -100,17 +156,27 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
   }, []);
 
   // lock body scroll while the flipbook is active (flip view)
+  // Preserve the original body overflow and restore it when appropriate.
+  // Use both `viewMode` and `isMobile` in deps so we react when mobile detection changes.
+  const originalBodyOverflow = useRef(null);
   useEffect(() => {
-    const original = document.body.style.overflow;
-    if (viewMode === "flip") {
+    if (typeof document === "undefined") return;
+    if (originalBodyOverflow.current === null) {
+      originalBodyOverflow.current = document.body.style.overflow || "";
+    }
+
+    // only lock body when flip view is active on non-mobile — PDF uses native scrolling
+    if (viewMode === "flip" && !isMobile) {
       document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = original;
+      // restore to the originally observed overflow value
+      document.body.style.overflow = originalBodyOverflow.current;
     }
+
     return () => {
-      document.body.style.overflow = original;
+      document.body.style.overflow = originalBodyOverflow.current;
     };
-  }, [viewMode]);
+  }, [viewMode, isMobile]);
 
   useEffect(() => {
     let cancelled = false;
@@ -221,17 +287,29 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
   // (moved earlier) current spread index for manual paging is declared above
 
   // small view-mode toggle UI styles
-  const toggleWrapper = {
-    position: "absolute",
-    left: 16,
-    top: 50,
-    bottom: 16,
-    zIndex: 60,
-    display: "flex",
-    flexDirection: "column",
-    gap: "8px",
-    // keep the small buttons visible; thumbnails are revealed on hover
-  };
+  const toggleWrapper = isMobile
+    ? {
+        position: "absolute",
+        left: "50%",
+        top: 12,
+        transform: "translateX(-50%)",
+        zIndex: 80,
+        display: "flex",
+        flexDirection: "row",
+        gap: 8,
+        alignItems: "center",
+      }
+    : {
+        position: "absolute",
+        left: 16,
+        top: 50,
+        bottom: 16,
+        zIndex: 60,
+        display: "flex",
+        flexDirection: "column",
+        gap: "8px",
+        // keep the small buttons visible; thumbnails are revealed on hover
+      };
 
   const toggleButton = (active) => ({
     padding: "6px 10px",
@@ -258,6 +336,30 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
     opacity: controlsVisible ? 1 : 0,
     transform: controlsVisible ? "translateY(0)" : "translateY(-6px)",
     pointerEvents: controlsVisible ? "auto" : "none",
+  };
+
+  const mobileThumbOverlay = {
+    position: "fixed",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    top: "30%",
+    zIndex: 120,
+    background: "rgba(0,0,0,0.5)",
+    display: controlsVisible ? "flex" : "none",
+    alignItems: "flex-start",
+    justifyContent: "center",
+    padding: 12,
+  };
+
+  const mobileThumbPanel = {
+    width: "100%",
+    maxHeight: "70%",
+    overflowY: "auto",
+    background: "#fff",
+    borderRadius: 8,
+    padding: 12,
+    boxSizing: "border-box",
   };
 
   // styles for a book-like spread
@@ -398,31 +500,50 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
 
   return (
     <div style={{ position: "relative" }}>
-        <div style={toggleWrapper}>
-          <div
-            // keep buttons visible; reveal thumbnails while hovering this area
-            onMouseEnter={() => setControlsVisible(true)}
-            onMouseLeave={() => setControlsVisible(false)}
-            style={{ display: "flex", flexDirection: "column", gap: 8 }}
-          >
-            <button style={toggleButton(viewMode === "flip")} onClick={() => setViewMode("flip")}>Flip</button>
-            <button style={toggleButton(viewMode === "pdf")} onClick={() => setViewMode("pdf")}>PDF</button>
+      {/* small visual indicator when mobile mode is forced for testing */}
+      {forceMobile && (
+        <div style={{ position: "fixed", left: 12, top: 12, zIndex: 999, background: "#111", color: "#fff", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
+          MOBILE MODE (forced)
+        </div>
+      )}
+      {/* debug overlay to show detected container width and computed isMobile when ?debug=1 */}
+      {debugMode && (
+        <div style={{ position: "fixed", right: 12, top: 12, zIndex: 999, background: "rgba(0,0,0,0.7)", color: "#fff", padding: "6px 10px", borderRadius: 6, fontSize: 12 }}>
+          <div>containerW: {Math.round(dimensions.width)}</div>
+          <div>isMobile: {String(isMobile)}</div>
+          <div>flipW: {Math.round(flipSize.width)}</div>
+        </div>
+      )}
+        {/* show controls only on non-mobile viewports */}
+        {!isMobile && (
+          <div style={toggleWrapper}>
+            <div
+              // keep buttons visible; reveal thumbnails while hovering this area (desktop)
+              onMouseEnter={() => setControlsVisible(true)}
+              onMouseLeave={() => setControlsVisible(false)}
+              style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}
+            >
+              <button style={toggleButton(viewMode === "flip")} onClick={() => setViewMode("flip")}>Flip</button>
+              <button style={toggleButton(viewMode === "pdf")} onClick={() => setViewMode("pdf")}>PDF</button>
 
-            {/* vertical thumbnail column under the buttons (revealed on hover) */}
-            <div style={thumbColumn}>
-              {pages.map((src, idx) => (
-                <button key={idx} onClick={() => goToPage(idx)} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }} title={`Page ${idx + 1}`}>
-                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                    <img src={src} alt={`thumb-${idx + 1}`} style={{ width: 56, height: 72, objectFit: "cover", display: "block", borderRadius: 4, border: "1px solid rgba(0,0,0,0.08)" }} />
-                    <div style={{ fontSize: 13, color: "#111", minWidth: 28, textAlign: "center" }}>{idx + 1}</div>
-                  </div>
-                </button>
-              ))}
+              {/* vertical thumbnail column under the buttons (revealed on hover for desktop) */}
+              <div style={thumbColumn}>
+                {pages.map((src, idx) => (
+                  <button key={idx} onClick={() => goToPage(idx)} style={{ border: "none", background: "transparent", padding: 0, cursor: "pointer" }} title={`Page ${idx + 1}`}>
+                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <img src={src} alt={`thumb-${idx + 1}`} style={{ width: 56, height: 72, objectFit: "cover", display: "block", borderRadius: 4, border: "1px solid rgba(0,0,0,0.08)" }} />
+                      <div style={{ fontSize: 13, color: "#111", minWidth: 28, textAlign: "center" }}>{idx + 1}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-      {viewMode === "pdf" ? (
+        {/* mobile thumbnails intentionally hidden — mobile shows native PDF only */}
+
+      {(isMobile || viewMode === "pdf") ? (
         // native PDF viewer
         <div style={{ width: "100vw", height: "100vh" }}>
           <iframe
@@ -436,7 +557,7 @@ export default function FlipBook({ pdfFile = "/book.pdf" }) {
           <div style={viewerStyle}>
             <HTMLFlipBook
               ref={bookRef}
-              width={Math.max(200, Math.round(flipSize.width / 2))}
+              width={Math.max(200, Math.round(isMobile ? flipSize.width : flipSize.width / 2))}
               height={flipSize.height}
               animationDuration={100}
               showCover={false}
