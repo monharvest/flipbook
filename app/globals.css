@@ -8,7 +8,7 @@ body {
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: #f3f4f6; /* keep the light gray background you asked for */
+  background: gray; /* keep the light gray background you asked for */
 }
 
 /* Make sure images and media don't overflow their containers */

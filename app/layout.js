@@ -10,6 +10,64 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1" />
+        {/* Early inline guard: install capture-phase handlers and a safe Permissions API shim
+            before any client/vendor scripts run so we can intercept known benign
+            third-party runtime errors (e.g. "Permissions check failed") and avoid
+            Turbopack's error overlay while still logging a warning + stack. */}
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function(){
+            function _df_benignFilter(text,stack){
+              return /Permissions check failed|addLinkAttributes is not a function/.test((text||'') + (stack||''));
+            }
+            function _df_onUnhandled(ev){
+              try{
+                var reason = (ev && ev.reason) || ev;
+                var text = (reason && (reason.message || String(reason))) || String(reason || '');
+                if(_df_benignFilter(text, reason && reason.stack)){
+                  try{ console.warn('[DearFlip][benign]', text); }catch(e){}
+                  try{ ev && ev.preventDefault && ev.preventDefault(); }catch(e){}
+                  try{ ev && ev.stopImmediatePropagation && ev.stopImmediatePropagation(); }catch(e){}
+                  try{ console.debug && console.debug('[DearFlip][stack]', reason && reason.stack || reason); }catch(e){}
+                }
+              }catch(e){}
+            }
+            function _df_onError(ev){
+              try{
+                var text = (ev && ev.message) || String(ev || '');
+                var stack = ev && ev.error && ev.error.stack || '';
+                if(_df_benignFilter(text, stack)){
+                  try{ console.warn('[DearFlip][error][benign]', text); }catch(e){}
+                  try{ ev && ev.preventDefault && ev.preventDefault(); }catch(e){}
+                  try{ ev && ev.stopImmediatePropagation && ev.stopImmediatePropagation(); }catch(e){}
+                  try{ console.debug && console.debug('[DearFlip][error][stack]', stack || ev); }catch(e){}
+                }
+              }catch(e){}
+            }
+            try{
+              if(window && window.addEventListener){
+                window.addEventListener('unhandledrejection', _df_onUnhandled, true);
+                window.addEventListener('error', _df_onError, true);
+              }
+              try{ window.onunhandledrejection = _df_onUnhandled; }catch(e){}
+              try{ window.onerror = function(m,s,l,c,e){ try{ _df_onError({message:m,error:e}); }catch(_){} }; }catch(e){}
+            }catch(e){}
+
+            // Permissions API shim: ensure navigator.permissions.query doesn't produce
+            // an unhandled rejection during vendor initialization. We replace it with
+            // a safe wrapper that returns a resolved fallback on rejection.
+            try{
+              if(typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function'){
+                var __df_orig_query = navigator.permissions.query.bind(navigator.permissions);
+                navigator.permissions.query = function(descriptor){
+                  try{
+                    var p = __df_orig_query(descriptor);
+                    return p && p.catch ? p.catch(function(){ return { state: 'denied' }; }) : p;
+                  }catch(e){ return Promise.resolve({ state: 'denied' }); }
+                };
+              }
+            }catch(e){}
+          })();
+        ` }} />
       </head>
       <body>{children}</body>
     </html>

@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>My Blog as a 3D Flipbook – Interactive PDF Magazine</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Read my blog as a realistic 3D flipbook with animated page turns. Powered by WebGL for smooth, lifelike reading on any device.">
+  <meta name="keywords" content="3D flipbook, interactive PDF, WebGL book, digital magazine, DearFlip, page flip animation">
+
+  <!-- Preload critical resources -->
+  <link rel="preload" href="./dflip/css/dflip.min.css" as="style">
+  <link rel="preload" href="./dflip/js/dflip.min.js" as="script">
+  <link rel="preload" href="./dflip/fonts/themify.woff" as="font" type=" plakfont/woff" crossorigin>
+
+  <!-- Styles -->
+  <link href="./dflip/css/dflip.min.css" rel="stylesheet">
+  <style>
+    @font-face {
+      font-family: 'themify';
+      src: url('./dflip/fonts/themify.woff') format('woff');
+      font-weight: normal;
+      font-style: normal;
+      font-display: swap;
+    }
+
+    html, body { height: 100%; margin: 0; overflow: hidden; background: #000; }
+    body { display: flex; flex-direction: column; }
+    #df_manual_book { flex: 1; width: 100%; height: 100%; }
+    .loading-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.9); color: #fff; font-family: sans-serif;
+      display: flex; flex-direction: column; justify-content: center; align-items: center;
+      z-index: 9999; transition: opacity 0.5s ease;
+      pointer-events: none;
+    }
+    .loading-overlay.hidden { opacity: 0; }
+    .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #0cf; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body class="public-fullscreen">
+
+  <!-- Loading Overlay -->
+  <div id="loading" class="loading-overlay">
+    <div class="spinner"></div>
+    <p>Loading 3D Flipbook...</p>
+  </div>
+
+  <!-- Flipbook Container -->
+  <div 
+    class="_df_book" 
+    id="df_manual_book"
+    webgl="true" 
+    backgroundcolor="gray"
+    source="public/books/book.pdf"
+    pagespeed="1.2"
+    autoPlay="false"
+    pageMode="2"
+    singlePageMode="auto"
+    textureSize="2048"
+    aria-label="Interactive 3D flipbook of my blog"
+  ></div>
+
+  <!-- Scripts (deferred + async where possible) -->
+  <script>
+    // Show loading until book is ready
+    window.addEventListener('load', () => {
+      const loading = document.getElementById('loading');
+      const checkBook = setInterval(() => {
+        if (window.df_manual_book && window.df_manual_book.ui) {
+          clearInterval(checkBook);
+          setTimeout(() => loading.classList.add('hidden'), 300);
+          setTimeout(() => loading.remove(), 800);
+        }
+      }, 200);
+    });
+  </script>
+
+  <!-- Load scripts in optimal order -->
+  <script defer src="./dflip/js/libs/pdf.min.js"></script>
+  <script defer src="./dflip/js/libs/three.min.js"></script>
+  <script defer src="./dflip/js/libs/jquery.min.js"></script>
+  <script defer src="./dflip/js/dflip.min.js"></script>
+
+  <!-- Init Script (cleaned up) -->
+  <script defer>
+    document.addEventListener('DOMContentLoaded', () => {
+      const book = window.df_manual_book;
+      if (!book) return;
+
+      // Auto fullscreen
+      const goFull = () => {
+        if (book.ui?.switchFullscreen) book.ui.switchFullscreen();
+        else if (book.container?.addClass) book.container.addClass('df-fullscreen');
+        book.resize?.();
+      };
+
+      // Responsive page mode
+      const applyPageMode = () => {
+        const isSmall = window.innerWidth <= 600;
+        if (book.setPageMode) book.setPageMode(isSmall ? 1 : 2);
+        else if (book.ui?.setPageMode) book.ui.setPageMode(isSmall ? 1 : 2);
+        book.resize?.();
+      };
+
+      // Wait for init
+      const waitForBook = setInterval(() => {
+        if (book.ui || (book.target && book.target.ui)) {
+          clearInterval(waitForBook);
+          setTimeout(() => {
+            goFull();
+            applyPageMode();
+            window.addEventListener('resize', applyPageMode);
+            window.addEventListener('orientationchange', () => setTimeout(applyPageMode, 300));
+          }, 300);
+        }
+      }, 150);
+    });
+  </script>
+
+</body>
+</html>
