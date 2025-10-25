@@ -249,17 +249,7 @@ export default function DearFlipEmbed() {
                 applyPageMode();
                 window.addEventListener("resize", applyPageMode);
                 window.addEventListener("orientationchange", () => setTimeout(applyPageMode, 300));
-                // hide the loading overlay once DearFlip reports its UI is ready
-                try {
-                  const l = document.getElementById('loading');
-                  if (l) {
-                    l.classList.add('hidden');
-                    // remove from layout after transition
-                    setTimeout(() => { try{ l.style.display = 'none'; }catch(e){} }, 600);
-                  }
-                } catch (e) {
-                  // ignore
-                }
+                // loading overlay intentionally removed; no DOM cleanup required here
               }, 300);
             }
           }, 150);
@@ -351,7 +341,7 @@ export default function DearFlipEmbed() {
   }, [failed]);
 
   return (
-    <div style={{ height: "100vh", width: "100vw", boxSizing: "border-box", background: "#000" }}>
+    <div style={{ height: "100vh", width: "100vw", boxSizing: "border-box", background: "transparent" }}>
       {/* Inline styles and preload link equivalents */}
       <link rel="preload" href="/dflip/css/dflip.min.css" as="style" />
       <link rel="preload" href="/dflip/js/dflip.min.js" as="script" />
@@ -367,22 +357,13 @@ export default function DearFlipEmbed() {
           font-style: normal;
           font-display: swap;
         }
-        html, body { height: 100%; margin: 0; overflow: hidden; background: #000; }
+  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
         body { display: flex; flex-direction: column; }
-        #df_manual_book { flex: 1; width: 100%; height: 100%; }
-        .loading-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-          background: rgba(0,0,0,0.9); color: #fff; font-family: sans-serif;
-          display: flex; flex-direction: column; justify-content: center; align-items: center;
-          z-index: 9999; transition: opacity 0.5s ease; pointer-events: none; }
-        .loading-overlay.hidden { opacity: 0; }
-        .spinner { width: 50px; height: 50px; border: 5px solid #333; border-top: 5px solid #0cf; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 16px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+  #df_manual_book { flex: 1; width: 100%; height: 100%; background: gray; }
+        /* Loading overlay removed - DearFlip UI will render without the dark fullscreen cover */
       ` }} />
 
-      <div id="loading" className="loading-overlay">
-        <div className="spinner" />
-        <p>Loading 3D Flipbook...</p>
-      </div>
+      {/* Loading overlay removed intentionally so the flipbook shows immediately without a dark cover */}
 
       {/* Diagnostics panel to surface failed/loaded assets */}
       {/* Diagnostics panel: collapsed by default; toggle to open */}

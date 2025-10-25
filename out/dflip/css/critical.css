@@ -1,0 +1,4 @@
+/* Critical styles moved from index.html */
+body{background-color:teal}
+body.public-fullscreen{overflow:hidden}
+#df_manual_book{position:fixed;inset:0;height:100vh!important;width:100vw!important;display:block;background-color:teal}

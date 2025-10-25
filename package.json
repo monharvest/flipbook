@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "export": "next export",
+    "assemble:out": "node scripts/assemble-out.js",
+    "build:static": "next build && node scripts/assemble-out.js",
     "start": "next start"
   },
   "dependencies": {

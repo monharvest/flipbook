@@ -1,0 +1,13 @@
+var R=require("../../chunks/ssr/[turbopack]_runtime.js")("server/app/_not-found/page.js")
+R.c("server/chunks/ssr/Desktop_nextjs-flipbook_fcd9dea8._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__8cab48e1._.js")
+R.c("server/chunks/ssr/c495b_next_dist_esm_build_templates_app-page_9396fdd2.js")
+R.c("server/chunks/ssr/[root-of-the-server]__5feae891._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__06233780._.js")
+R.c("server/chunks/ssr/[root-of-the-server]__44a4bf59._.js")
+R.c("server/chunks/ssr/Desktop_nextjs-flipbook_app_layout_500f945b.js")
+R.c("server/chunks/ssr/c495b_next_dist_client_components_09857e9b._.js")
+R.c("server/chunks/ssr/c495b_next_dist_client_components_builtin_forbidden_0b80f4a9.js")
+R.c("server/chunks/ssr/3d860_nextjs-flipbook__next-internal_server_app__not-found_page_actions_c98dbd23.js")
+R.m(27118)
+module.exports=R.m(27118).exports
