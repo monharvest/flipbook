@@ -260,8 +260,7 @@ export default function DearFlipEmbed() {
         try{ if(__dfl_restore) __dfl_restore(); }catch(e){}
   try{ if(__dfl_permissions_restore) __dfl_permissions_restore(); }catch(e){}
 
-        // if scripts provided df_manual_book automatically, run init on load
-        // otherwise also attach a load listener
+        // run init when the page has loaded (restore auto-start behavior)
         if (document.readyState === "complete") init();
         else window.addEventListener("load", init, { once: true });
       } catch (err) {
@@ -413,69 +412,7 @@ export default function DearFlipEmbed() {
         }
       ` }} />
 
-      {/* Loading overlay removed intentionally so the flipbook shows immediately without a dark cover */}
-
-      {/* Diagnostics panel to surface failed/loaded assets */}
-      {/* Diagnostics panel: collapsed by default; toggle to open */}
-      <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 10001 }}>
-        {/* DF toggle button intentionally removed per user request. */}
-        <div
-          id="dflip-diagnostics-panel"
-          role="region"
-          aria-hidden={!diagOpen && !(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')}
-          style={{
-            marginTop: 8,
-            width: 320,
-            maxWidth: 'calc(100vw - 48px)',
-            background: 'rgba(0,0,0,0.85)',
-            color: '#fff',
-            padding: 12,
-            borderRadius: 8,
-            fontSize: 12,
-            transition: 'transform 200ms ease, opacity 200ms ease',
-            transformOrigin: 'top right',
-            transform: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.96)',
-            opacity: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 1 : 0,
-            pointerEvents: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 'auto' : 'none'
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 8 }}>DearFlip diagnostics</div>
-          <div style={{ marginBottom: 8 }}>
-            <div>Loaded: <span style={{ color: '#6cf' }}>{loaded.length}</span></div>
-            <div>Failed: <span style={{ color: '#f66' }}>{failed.length}</span></div>
-          </div>
-          {failed.length > 0 && (
-            <div style={{ marginBottom: 8 }}>
-              <div style={{ marginBottom: 6 }}>Failed URLs:</div>
-              <ul style={{ margin: 0, paddingLeft: 16 }}>
-                {failed.map((u) => (
-                  <li key={u} style={{ wordBreak: 'break-all' }}>{u}</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button
-              onClick={() => retryFailedAssets()}
-              style={{ background: '#0cf', border: 'none', padding: '6px 10px', borderRadius: 6 }}
-            >
-              Retry
-            </button>
-            <button
-              onClick={() => {
-                // copy failed list to clipboard for troubleshooting
-                if (failed.length) navigator.clipboard?.writeText(failed.join('\n'));
-              }}
-              style={{ background: '#333', border: 'none', padding: '6px 10px', borderRadius: 6 }}
-            >
-              Copy
-            </button>
-          </div>
-          <div style={{ marginTop: 8, opacity: 0.8, fontSize: 11 }}>
-            Tip: open DevTools → Network to see 404s. Or run <code>__dearflip_retry()</code> in console.
-          </div>
-        </div>
-      </div>
+      {/* Cover overlay removed per user request */}
 
       <div
         className="_df_book"
