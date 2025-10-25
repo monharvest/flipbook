@@ -6,6 +6,7 @@ export default function DearFlipEmbed() {
   const [failed, setFailed] = useState([]);
   const [loaded, setLoaded] = useState([]);
   const [diagOpen, setDiagOpen] = useState(false);
+  const [showControls, setShowControls] = useState(false);
 
   useEffect(() => {
     // Attach global handlers to capture unhandled rejections/errors from the
@@ -270,9 +271,18 @@ export default function DearFlipEmbed() {
       }
     })();
 
+    // show controls only after first user interaction (click/tap)
+    const onFirstClick = () => {
+      try { setShowControls(true); } catch (e) { /* ignore */ }
+      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
+    };
+    // listen for one user click anywhere on the page
+    try { window.addEventListener('click', onFirstClick, { once: true }); } catch (e) {}
+
     return () => {
       window.removeEventListener('unhandledrejection', onUnhandled);
       window.removeEventListener('error', onError);
+      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
       // no-op cleanup; scripts remain loaded for SPA navigation
     };
   }, []);
@@ -340,6 +350,21 @@ export default function DearFlipEmbed() {
     return () => window.removeEventListener('dearflip-retry', handler);
   }, [failed]);
 
+  // Toggle a class on the DearFlip container to reveal vendor controls
+  // only after the user has interacted (showControls) or when the
+  // '?dfdiag=1' query param forces visibility.
+  useEffect(() => {
+    try {
+      const forced = (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1');
+      const el = (typeof document !== 'undefined') ? document.getElementById('df_manual_book') : null;
+      if (!el) return;
+      if (showControls || forced) el.classList.add('df-show-controls');
+      else el.classList.remove('df-show-controls');
+    } catch (e) {
+      /* ignore DOM errors */
+    }
+  }, [showControls]);
+
   return (
     <div style={{ height: "100vh", width: "100vw", boxSizing: "border-box", background: "transparent" }}>
       {/* Inline styles and preload link equivalents */}
@@ -361,6 +386,31 @@ export default function DearFlipEmbed() {
         body { display: flex; flex-direction: column; }
   #df_manual_book { flex: 1; width: 100%; height: 100%; background: gray; }
         /* Loading overlay removed - DearFlip UI will render without the dark fullscreen cover */
+
+  /*
+   Hide vendor-provided navigation/controls inside the DearFlip container
+   by default. They'll be revealed after the user interacts (first click)
+   or when the '?dfdiag=1' query param forces visibility.
+   We target common class-name fragments used by vendor controls.
+  */
+        #df_manual_book [class*="control"],
+        #df_manual_book [class*="nav"],
+        #df_manual_book [class*="toolbar"],
+        #df_manual_book [class*="pagination"],
+        #df_manual_book [class*="footer"],
+        #df_manual_book [class*="bottom"] {
+          display: none !important;
+        }
+
+        /* Reveal when the container has the 'df-show-controls' class */
+        #df_manual_book.df-show-controls [class*="control"],
+        #df_manual_book.df-show-controls [class*="nav"],
+        #df_manual_book.df-show-controls [class*="toolbar"],
+        #df_manual_book.df-show-controls [class*="pagination"],
+        #df_manual_book.df-show-controls [class*="footer"],
+        #df_manual_book.df-show-controls [class*="bottom"] {
+          display: initial !important;
+        }
       ` }} />
 
       {/* Loading overlay removed intentionally so the flipbook shows immediately without a dark cover */}
@@ -368,33 +418,11 @@ export default function DearFlipEmbed() {
       {/* Diagnostics panel to surface failed/loaded assets */}
       {/* Diagnostics panel: collapsed by default; toggle to open */}
       <div style={{ position: 'fixed', right: 12, top: 12, zIndex: 10001 }}>
-        <button
-          aria-expanded={diagOpen}
-          aria-controls="dflip-diagnostics-panel"
-          onClick={() => setDiagOpen((s) => !s)}
-          title={diagOpen ? 'Hide DearFlip diagnostics' : 'Show DearFlip diagnostics'}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 18,
-            border: 'none',
-            background: 'rgba(0,0,0,0.7)',
-            color: '#fff',
-            display: (diagOpen || failed.length > 0 || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 'flex' : 'none',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontWeight: 700,
-            cursor: 'pointer',
-            boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
-          }}
-        >
-          DF
-        </button>
-
+        {/* DF toggle button intentionally removed per user request. */}
         <div
           id="dflip-diagnostics-panel"
           role="region"
-          aria-hidden={!diagOpen}
+          aria-hidden={!diagOpen && !(typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')}
           style={{
             marginTop: 8,
             width: 320,
@@ -406,9 +434,9 @@ export default function DearFlipEmbed() {
             fontSize: 12,
             transition: 'transform 200ms ease, opacity 200ms ease',
             transformOrigin: 'top right',
-            transform: diagOpen ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.96)',
-            opacity: diagOpen ? 1 : 0,
-            pointerEvents: diagOpen ? 'auto' : 'none'
+            transform: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 'translateY(0) scale(1)' : 'translateY(-8px) scale(0.96)',
+            opacity: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 1 : 0,
+            pointerEvents: (diagOpen || (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('dfdiag') === '1')) ? 'auto' : 'none'
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 8 }}>DearFlip diagnostics</div>
