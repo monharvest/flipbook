@@ -95,7 +95,7 @@ export default function DearFlipEmbed() {
       const el = document.getElementById("df_manual_book");
       if (el) {
         el.setAttribute("webgl", "true");
-        el.setAttribute("backgroundcolor", "gray");
+        el.setAttribute("backgroundcolor", "teal");
         el.setAttribute("source", "/books/book.pdf");
         el.setAttribute("pagespeed", "1.2");
         el.setAttribute("autoPlay", "false");
@@ -431,9 +431,9 @@ export default function DearFlipEmbed() {
           alignItems: 'center',
           justifyContent: 'center',
           height: '100%',
-          color: '#999',
+          color: 'teal',
           fontSize: '14px',
-          background: '#f5f5f5'
+          background: 'teal'
         }}>
           Scroll to load flipbook...
         </div>
