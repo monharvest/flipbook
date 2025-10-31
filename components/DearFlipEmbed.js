@@ -1,35 +1,33 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 export default function DearFlipEmbed() {
   const [failed, setFailed] = useState([]);
   const [loaded, setLoaded] = useState([]);
   const [diagOpen, setDiagOpen] = useState(false);
   const [showControls, setShowControls] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [dearflipLoaded, setDearflipLoaded] = useState(false);
+  const containerRef = useRef(null);
 
+  // Set up global error handlers (runs once on mount)
   useEffect(() => {
-    // Attach global handlers to capture unhandled rejections/errors from the
-    // in-page DearFlip scripts so we can surface full stacks in the dev log.
     const onUnhandled = (ev) => {
       try {
         const reason = ev?.reason || ev;
         const text = (reason && (reason.message || reason.toString())) || String(reason);
-        // filter known benign/third-party messages so Turbopack doesn't surface them as dev-errors
         const benign = /Permissions check failed|addLinkAttributes is not a function/.test(text + (reason?.stack || ''));
         if (benign) {
-          // keep as warn so it's visible but not surfaced as an error overlay
           console.warn('[DearFlip][unhandledRejection][benign]', text);
           try{ ev && typeof ev.preventDefault === 'function' && ev.preventDefault(); }catch(e){}
           try{ ev && typeof ev.stopImmediatePropagation === 'function' && ev.stopImmediatePropagation(); }catch(e){}
-          // expose full stack to debug only
           if (typeof console.debug === 'function') console.debug('[DearFlip][stack]', reason?.stack || reason);
         } else {
           console.error('[DearFlip][unhandledRejection] reason:', reason);
           if (reason && reason.stack) console.error('[DearFlip][unhandledRejection][stack]', reason.stack);
         }
       } catch (e) {
-        // avoid throwing from the handler itself
         try { console.error('[DearFlip] failed to log unhandledRejection', e); } catch (__) {}
       }
     };
@@ -50,15 +48,49 @@ export default function DearFlipEmbed() {
         try { console.error('[DearFlip] failed to log error', e); } catch (__) {}
       }
     };
-  // install capture-phase listeners early to try to intercept vendor-caused
-  // unhandled rejections/errors before other tooling (Turbopack) can show overlays.
-  window.addEventListener('unhandledrejection', onUnhandled, true);
-  window.addEventListener('error', onError, true);
-  // fallback assignments for environments that prefer the property hooks
-  try { window.onunhandledrejection = onUnhandled; } catch (e) {}
-  try { window.onerror = function(message, source, lineno, colno, err){ try { onError({ message, error: err }); } catch(e){} }; } catch (e) {}
-    // ensure the flipbook container has the attributes DearFlip expects
-    // (set via DOM API to avoid React boolean attribute warnings)
+
+    window.addEventListener('unhandledrejection', onUnhandled, true);
+    window.addEventListener('error', onError, true);
+    try { window.onunhandledrejection = onUnhandled; } catch (e) {}
+    try { window.onerror = function(message, source, lineno, colno, err){ try { onError({ message, error: err }); } catch(e){} }; } catch (e) {}
+
+    // show controls only after first user interaction (click/tap)
+    const onFirstClick = () => {
+      try { setShowControls(true); } catch (e) { /* ignore */ }
+      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
+    };
+    try { window.addEventListener('click', onFirstClick, { once: true }); } catch (e) {}
+
+    return () => {
+      window.removeEventListener('unhandledrejection', onUnhandled);
+      window.removeEventListener('error', onError);
+      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
+    };
+  }, []);
+
+  // Lazy-load DearFlip only when component scrolls into view
+  useEffect(() => {
+    if (!containerRef.current || dearflipLoaded) return;
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          setDearflipLoaded(true);
+          observer.disconnect();
+        }
+      },
+      { threshold: 0.1 }
+    );
+    
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [dearflipLoaded]);
+
+  // Load DearFlip scripts and initialize when dearflipLoaded becomes true
+  useEffect(() => {
+    if (!dearflipLoaded) return;
+
+    // Ensure the flipbook container has the attributes DearFlip expects
     if (typeof document !== "undefined") {
       const el = document.getElementById("df_manual_book");
       if (el) {
@@ -72,7 +104,7 @@ export default function DearFlipEmbed() {
         el.setAttribute("textureSize", "2048");
       }
     }
-    // Load scripts sequentially and then run init
+
     const scripts = [
       "/dflip/js/libs/pdf.min.js",
       "/dflip/js/libs/three.min.js",
@@ -82,7 +114,6 @@ export default function DearFlipEmbed() {
 
     const loadScript = (src) =>
       new Promise((resolve, reject) => {
-        // don't load twice
         const existing = document.querySelector(`script[src="${src}"]`);
         if (existing) {
           console.log(`[DearFlip] script already present: ${src}`);
@@ -90,8 +121,6 @@ export default function DearFlipEmbed() {
           return resolve();
         }
 
-        // Special-case three.min.js: temporarily wrap Object.defineProperty to avoid
-        // errors when libraries attempt to redefine AudioContext on non-configurable properties.
         const isThree = /three(\.min)?\.js$/.test(src);
         let restoreWrapper = null;
 
@@ -106,7 +135,6 @@ export default function DearFlipEmbed() {
     Object.defineProperty=function(obj,prop,desc){
       if(prop==='AudioContext'){
         try{
-          // only attempt if existing descriptor is configurable (or absent)
           var d=Object.getOwnPropertyDescriptor(obj||{},prop);
           if(!d||d.configurable){
             return __dfl_orig.call(Object,obj,prop,desc);
@@ -132,51 +160,30 @@ export default function DearFlipEmbed() {
               }
             };
           } catch (e) {
-            // proceed without wrapper if anything fails
             restoreWrapper = null;
           }
         }
 
         const s = document.createElement("script");
         s.src = src;
-        s.defer = true;
+        s.async = true;
         s.onload = () => {
           console.log(`[DearFlip] loaded: ${src}`);
           setLoaded((arr) => (arr.includes(src) ? arr : [...arr, src]));
-          // remove from failed if previously failed
           setFailed((arr) => arr.filter((u) => u !== src));
-          // restore original defineProperty if we wrapped it
           if (restoreWrapper) restoreWrapper();
           resolve();
         };
         s.onerror = (e) => {
           console.error(`[DearFlip] failed to load: ${src}`, e);
           setFailed((arr) => (arr.includes(src) ? arr : [...arr, src]));
-          // try to restore even on error
           if (restoreWrapper) restoreWrapper();
           reject(new Error(`Failed to load ${src}`));
         };
         document.body.appendChild(s);
       });
 
-    // helper to retry failed assets
-    const retryFailed = async () => {
-      const toRetry = [...failed];
-      setFailed([]);
-      for (const src of toRetry) {
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          await loadScript(src);
-        } catch (err) {
-          console.error(`[DearFlip] retry failed for ${src}`, err);
-        }
-      }
-    };
-
     (async () => {
-      // install a broad defineProperty wrapper while we load DearFlip assets to
-      // avoid 'Cannot redefine property: AudioContext' errors coming from
-      // minified bundles that attempt to Object.defineProperty on the THREE namespace.
       let __dfl_restore = null;
       try {
         try {
@@ -197,17 +204,13 @@ export default function DearFlipEmbed() {
           };
         }catch(e){ /* ignore */ }
 
-        // Temporarily wrap navigator.permissions.query to prevent environment-specific
-        // 'Permissions check failed' rejections coming from vendor code.
         let __dfl_permissions_restore = null;
         try {
           if (typeof navigator !== 'undefined' && navigator.permissions && typeof navigator.permissions.query === 'function') {
             const origQuery = navigator.permissions.query.bind(navigator.permissions);
-            // replace with a safe wrapper that swallows rejections
             navigator.permissions.query = function(descriptor) {
               try {
                 const p = origQuery(descriptor);
-                // ensure any rejection becomes a resolved state object to avoid unhandledRejection
                 return p.catch(() => ({ state: 'denied' }));
               } catch (e) {
                 return Promise.resolve({ state: 'denied' });
@@ -219,12 +222,16 @@ export default function DearFlipEmbed() {
           }
         } catch (e) { /* ignore */ }
 
+        // Load scripts sequentially with yields to reduce blocking
         for (const src of scripts) {
           // eslint-disable-next-line no-await-in-loop
           await loadScript(src);
+          // Yield to main thread between script loads
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise(r => setTimeout(r, 0));
         }
 
-        // Init logic copied from index.html
+        // Init logic
         const init = () => {
           const book = window.df_manual_book;
           if (!book) return;
@@ -236,10 +243,17 @@ export default function DearFlipEmbed() {
           };
 
           const applyPageMode = () => {
-            const isSmall = window.innerWidth <= 600;
-            if (book.setPageMode) book.setPageMode(isSmall ? 1 : 2);
-            else if (book.ui?.setPageMode) book.ui.setPageMode(isSmall ? 1 : 2);
-            book.resize?.();
+            try {
+              const container = document.getElementById('df_manual_book');
+              const width = container?.clientWidth || window.innerWidth;
+              const isSmall = width <= 700;
+              if (book.setPageMode) book.setPageMode(isSmall ? 1 : 2);
+              else if (book.ui?.setPageMode) book.ui.setPageMode(isSmall ? 1 : 2);
+              if (typeof book.resize === 'function') book.resize();
+              setTimeout(() => { try { if (typeof book.resize === 'function') book.resize(); } catch(e){} }, 250);
+            } catch (e) {
+              try { if (book.resize) book.resize(); } catch (__) {}
+            }
           };
 
           const waitForBook = setInterval(() => {
@@ -248,43 +262,87 @@ export default function DearFlipEmbed() {
               setTimeout(() => {
                 goFull();
                 applyPageMode();
+                setIsLoading(false);
                 window.addEventListener("resize", applyPageMode);
                 window.addEventListener("orientationchange", () => setTimeout(applyPageMode, 300));
-                // loading overlay intentionally removed; no DOM cleanup required here
               }, 300);
             }
           }, 150);
         };
 
-        // restore the original defineProperty (we wrapped it during load)
         try{ if(__dfl_restore) __dfl_restore(); }catch(e){}
-  try{ if(__dfl_permissions_restore) __dfl_permissions_restore(); }catch(e){}
+        try{ if(__dfl_permissions_restore) __dfl_permissions_restore(); }catch(e){}
 
-        // run init when the page has loaded (restore auto-start behavior)
-        if (document.readyState === "complete") init();
-        else window.addEventListener("load", init, { once: true });
+        function scheduleInit() {
+          if (document.readyState === "complete") {
+            try {
+              init();
+            } catch (e) {
+              console.warn('DearFlip init error', e);
+            }
+          } else {
+            requestAnimationFrame(() => {
+              try {
+                init();
+              } catch (e) {
+                console.warn('DearFlip init error', e);
+              }
+            });
+          }
+        }
+
+        // Hide DearFlip's loading text
+        const hideLoadingText = () => {
+          const container = document.getElementById('df_manual_book');
+          if (!container) return;
+          
+          const walker = document.createTreeWalker(
+            container,
+            NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT,
+            null,
+            false
+          );
+          
+          const nodesToRemove = [];
+          let node;
+          while (node = walker.nextNode()) {
+            if (node.nodeType === 3) {
+              if (/Loading|PDF/i.test(node.textContent)) {
+                nodesToRemove.push(node);
+              }
+            } else if (node.nodeType === 1) {
+              if (/loading|pdf/i.test(node.className || '')) {
+                node.style.display = 'none';
+              }
+            }
+          }
+          
+          nodesToRemove.forEach(n => n.remove());
+        };
+        
+        setTimeout(hideLoadingText, 100);
+        setTimeout(hideLoadingText, 500);
+        setTimeout(hideLoadingText, 1000);
+        
+        try {
+          const observer = new MutationObserver(() => {
+            hideLoadingText();
+          });
+          observer.observe(document.getElementById('df_manual_book') || document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+          });
+        } catch (e) {}
+
+        if (document.readyState === "complete") scheduleInit();
+        else window.addEventListener("load", scheduleInit, { once: true });
       } catch (err) {
-        // ensure restore on error
         try{ if(__dfl_restore) __dfl_restore(); }catch(e){}
         console.error("Failed to load DearFlip scripts", err);
       }
     })();
-
-    // show controls only after first user interaction (click/tap)
-    const onFirstClick = () => {
-      try { setShowControls(true); } catch (e) { /* ignore */ }
-      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
-    };
-    // listen for one user click anywhere on the page
-    try { window.addEventListener('click', onFirstClick, { once: true }); } catch (e) {}
-
-    return () => {
-      window.removeEventListener('unhandledrejection', onUnhandled);
-      window.removeEventListener('error', onError);
-      try { window.removeEventListener('click', onFirstClick); } catch (e) {}
-      // no-op cleanup; scripts remain loaded for SPA navigation
-    };
-  }, []);
+  }, [dearflipLoaded]);
 
   // expose a global retry for quick manual debugging from console
   useEffect(() => {
@@ -365,13 +423,40 @@ export default function DearFlipEmbed() {
   }, [showControls]);
 
   return (
-    <div style={{ height: "100vh", width: "100vw", boxSizing: "border-box", background: "transparent" }}>
-      {/* Inline styles and preload link equivalents */}
+    <div ref={containerRef} style={{ height: "100vh", width: "100vw", boxSizing: "border-box", background: "transparent", position: "relative" }}>
+      {/* Only render DearFlip markup and scripts if component is visible */}
+      {!dearflipLoaded && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: '100%',
+          color: '#999',
+          fontSize: '14px',
+          background: '#f5f5f5'
+        }}>
+          Scroll to load flipbook...
+        </div>
+      )}
+      
+      {dearflipLoaded && (
+        <>
+          {/* Preload critical resources for faster FCP/LCP */}
+          <link rel="preconnect" href="/" />
+          <link rel="dns-prefetch" href="/" />
+      
+      {/* Preload only the most critical CSS - defer others */}
       <link rel="preload" href="/dflip/css/dflip.min.css" as="style" />
-      <link rel="preload" href="/dflip/js/dflip.min.js" as="script" />
       <link rel="preload" href="/dflip/fonts/themify.woff" as="font" type="font/woff" crossOrigin="anonymous" />
-
-      <link href="/dflip/css/dflip.min.css" rel="stylesheet" />
+      
+      {/* Load CSS asynchronously to prevent render blocking */}
+      <link 
+        href="/dflip/css/dflip.min.css" 
+        rel="stylesheet" 
+        media="print" 
+        onLoad={(e) => { e.target.media = 'all'; e.target.onload = null; }} 
+      />
+      <noscript><link href="/dflip/css/dflip.min.css" rel="stylesheet" /></noscript>
 
       <style dangerouslySetInnerHTML={{ __html: `
         @font-face {
@@ -381,10 +466,83 @@ export default function DearFlipEmbed() {
           font-style: normal;
           font-display: swap;
         }
-  html, body { height: 100%; margin: 0; overflow: hidden; background: transparent; }
+  html, body { 
+    height: 100%; 
+    margin: 0; 
+    overflow: hidden; 
+    background: gray;
+    /* Prevent mobile address bar from causing CLS */
+    position: fixed;
+    width: 100%;
+    top: 0;
+    left: 0;
+  }
         body { display: flex; flex-direction: column; }
-  #df_manual_book { flex: 1; width: 100%; height: 100%; background: gray; }
+  /* Ensure the DF container behaves correctly inside a flex column.
+    Lock dimensions to prevent any layout shifts during content load. */
+  #df_manual_book { 
+    flex: 1; 
+    width: 100% !important; 
+    height: 100% !important; 
+    min-height: 100vh !important;
+    max-height: 100vh !important;
+    background: gray;
+    position: relative;
+    /* CLS fixes: strict layout isolation */
+    contain: strict;
+    /* Prevent any overflow that could trigger reflow */
+    overflow: hidden;
+    /* Prevent elastic scrolling on iOS */
+    overscroll-behavior: none;
+    /* Prevent accidental text selection during touch interactions */
+    user-select: none;
+    -webkit-user-select: none;
+    /* Enable GPU acceleration */
+    transform: translate3d(0, 0, 0);
+    -webkit-transform: translate3d(0, 0, 0);
+    /* Force hardware acceleration */
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+  /* also target the wrapper class (used by vendor) */
+  ._df_book { 
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    /* CLS fixes for mobile */
+    contain: strict;
+    overflow: hidden;
+  }
         /* Loading overlay removed - DearFlip UI will render without the dark fullscreen cover */
+
+  /* Hide DearFlip's default "Loading PDF..." text - all possible selectors */
+  #df_manual_book .df-loading-text,
+  #df_manual_book .df-loading,
+  #df_manual_book [class*="loading-text"],
+  #df_manual_book [class*="df-loading"],
+  #df_manual_book .df-book-loading,
+  #df_manual_book .df-container .df-loading,
+  .df-loading-wrapper,
+  .df-loading-text,
+  .df-ui-loading,
+  .df-loading-cover,
+  #df_manual_book > div[style*="Loading"],
+  #df_manual_book div:not([class]):not([id]) {
+    display: none !important;
+    visibility: hidden !important;
+    opacity: 0 !important;
+    height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  /* Hide any text content containing "Loading" or "PDF" in the container */
+  #df_manual_book::before,
+  #df_manual_book::after {
+    content: none !important;
+    display: none !important;
+  }
 
   /*
    Hide vendor-provided navigation/controls inside the DearFlip container
@@ -410,7 +568,36 @@ export default function DearFlipEmbed() {
         #df_manual_book.df-show-controls [class*="bottom"] {
           display: initial !important;
         }
+
+        /* Minimal loading indicator for FCP */
+        .df-loader {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          width: 60px;
+          height: 60px;
+          border: 4px solid rgba(255,255,255,0.3);
+          border-top-color: #fff;
+          border-radius: 50%;
+          animation: df-spin 0.8s linear infinite;
+          opacity: 1;
+          transition: opacity 0.3s ease;
+          pointer-events: none;
+          z-index: 10;
+        }
+
+        .df-loader.hidden {
+          opacity: 0;
+        }
+
+        @keyframes df-spin {
+          to { transform: translate(-50%, -50%) rotate(360deg); }
+        }
       ` }} />
+
+      {/* Minimal loading spinner - improves perceived performance */}
+      {isLoading && <div className="df-loader" aria-label="Loading flipbook" />}
 
       {/* Cover overlay removed per user request */}
 
@@ -419,6 +606,8 @@ export default function DearFlipEmbed() {
         id="df_manual_book"
         aria-label="Interactive 3D flipbook of my blog"
       />
+        </>
+      )}
     </div>
   );
 }

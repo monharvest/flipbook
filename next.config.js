@@ -1,6 +1,6 @@
 /**
  * Next.js static export configuration.
- * We set `output: 'export'` so `next build` + `next export` generates a static `out/` folder
+ * We set `output: 'export'` so `next build` generates a static `out/` folder
  * which can be deployed to Cloudflare Pages as a fully static site.
  */
 module.exports = {
@@ -8,5 +8,10 @@ module.exports = {
   output: 'export',
   // Keep trailingSlash false so routes map to index.html in subfolders
   trailingSlash: false,
+  // Enable React strict mode for better development experience
+  reactStrictMode: true,
+  // Optimize images for static export
+  images: {
+    unoptimized: true,
+  },
 };
-module.exports = { reactStrictMode: true }
